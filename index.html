@@ -359,7 +359,7 @@ $("#threeCanvas_legacy")?.addEventListener("pointermove",e=>{if(!threeDrag)retur
 $("#threeCanvas_legacy")?.addEventListener("pointerup",()=>threeDrag=null);
 $("#threeCanvas_legacy")?.addEventListener("wheel",e=>{e.preventDefault();cam.zoom=Math.max(.45,Math.min(2.5,cam.zoom*(e.deltaY>0?.9:1.1)));render3D()},{passive:false});
 
-window.addEventListener("resize",()=>{if($("#threeBack").classList.contains("show"))render3D()});
+/* legacy Canvas 3D resize disabled; WebGL module handles resize */
 
 $("#saveImg").onclick=()=>{let svg=$("#plan").cloneNode(true),xml=new XMLSerializer().serializeToString(svg),blob=new Blob([xml],{type:"image/svg+xml"}),url=URL.createObjectURL(blob),im=new Image();im.onload=()=>{let c=document.createElement("canvas");c.width=1600;c.height=1240;let x=c.getContext("2d");x.fillStyle="white";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);let a=document.createElement("a");a.download="房間平面圖.png";a.href=c.toDataURL("image/png");a.click()};im.src=url};tabs();applyRoom(false);
 </script>
@@ -489,7 +489,7 @@ function addWallSegment(horizontal,start,end,base,height,rw,rh,t,mat=MAT.wall){
 }
 function wallOpenings(wall,rw,rh,B,f){
  let L=(wall==="top"||wall==="bottom")?rw:rh, out=[];
- for(const el of [...q("#objects").children]){
+ [...q("#objects").children].forEach(el=>{
    if(!["door","window"].includes(el.dataset.type)||(el.dataset.wall||"bottom")!==wall)return;
    let pos=(wall==="top"||wall==="bottom")?((+el.dataset.x-B.x)/f/100):((+el.dataset.y-B.y)/f/100);
    let len=(+el.dataset.w||80)/100;
@@ -558,32 +558,46 @@ function addDoor3(el,wall,rw,rh,B,f,t){
    let leaf=meshBox(.045,H-.035,len-frame,MAT.wood);leaf.position.set(0,H/2,side*(len-frame)/2);pivot.add(leaf);pivot.rotation.y=ang;scene.add(pivot);
  }
 }
-async function buildScene(){
+function buildScene(){
  if(renderer){renderer.dispose();q("#threeCanvas").innerHTML=""}
  scene=new THREE.Scene();scene.background=new THREE.Color(0xe8ecef);
  let host=q("#threeCanvas"),w=host.clientWidth||900,h=host.clientHeight||600;
- camera=new THREE.PerspectiveCamera(42,w/h,.05,100);renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,alpha:false});
- renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(w,h);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
- renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;host.appendChild(renderer.domElement);
- scene.add(new THREE.HemisphereLight(0xffffff,0xb7aa99,2.2));let sun=new THREE.DirectionalLight(0xfff4df,3.2);sun.position.set(4,7,5);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
- let B=bounds(),f=factor(),{rw,rh,H,t}=addRoom(B,f);
- [...q("#objects").children].forEach(el=>{
-   let type=el.dataset.type, wall=el.dataset.wall||"bottom",cmw=+el.dataset.w||80,cmd=+el.dataset.h||60;
+ camera=new THREE.PerspectiveCamera(42,w/h,.05,100);
+ renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+ renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(w,h);
+ renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+ renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+ host.appendChild(renderer.domElement);
+ scene.add(new THREE.HemisphereLight(0xffffff,0xb7aa99,2.2));
+ let sun=new THREE.DirectionalLight(0xfff4df,3.2);sun.position.set(4,7,5);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
+
+ let B=window.bounds?window.bounds():bounds(),f=window.factor?window.factor():factor(),{rw,rh,H,t}=addRoom(B,f);
+ for(const el of [...q("#objects").children]){
+   let type=el.dataset.type,wall=el.dataset.wall||"bottom",cmw=+el.dataset.w||80,cmd=+el.dataset.h||60;
    let sx=(+el.dataset.x-B.x)/f/100,sz=(+el.dataset.y-B.y)/f/100;
-   if(type==="window"){addWindow3(el,wall,rw,rh,B,f,t);continue;}
-   if(type==="door"){addDoor3(el,wall,rw,rh,B,f,t);continue;}
+   if(type==="window"){addWindow3(el,wall,rw,rh,B,f,t);continue}
+   if(type==="door"){addDoor3(el,wall,rw,rh,B,f,t);continue}
    let W=cmw/100,D=cmd/100,hh=(heights[type]||80)/100,rot=((+el.dataset.rot||0)%360)*Math.PI/180;
-   let obj=await loadSH3D(type,W,D,hh);
-   if(!obj)obj=furniture(type,W,D,hh);
-   // Computer desk and air-conditioner remain procedural because this CC0 library
-   // doesn't contain a suitable dedicated model.
-   if(el.dataset.flip==="1") obj.scale.x*=-1;
-   obj.position.x+=(-rw/2+sx+W/2); obj.position.z+=(-rh/2+sz+D/2);
-   obj.rotation.y=-rot; scene.add(obj);
+   // Draw a usable furniture immediately so the 3D view never waits on model downloads.
+   let fallback=furniture(type,W,D,hh);
+   if(el.dataset.flip==="1")fallback.scale.x=-1;
+   fallback.position.set(-rw/2+sx+W/2,0,-rh/2+sz+D/2);fallback.rotation.y=-rot;scene.add(fallback);
+
+   if(SH3D_MODELS[type]){
+     loadSH3D(type,W,D,hh).then(obj=>{
+       if(!obj||!scene)return;
+       let px=fallback.position.x,pz=fallback.position.z,ry=fallback.rotation.y;
+       scene.remove(fallback);
+       if(el.dataset.flip==="1")obj.scale.x*=-1;
+       obj.position.x+=px;obj.position.z+=pz;obj.rotation.y=ry;scene.add(obj);
+     }).catch(err=>console.warn("model replacement failed",type,err));
+   }
  }
- camera.position.set(rw*.95,Math.max(3.4,rw*.55),rh*1.15);controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,.75,0);controls.enableDamping=true;controls.dampingFactor=.07;controls.maxPolarAngle=Math.PI/2-.04;controls.minDistance=2;controls.maxDistance=20;controls.update();
- function loop(){raf=requestAnimationFrame(loop);controls.update();renderer.render(scene,camera)} cancelAnimationFrame(raf);loop();
-}
+ camera.position.set(rw*.95,Math.max(3.4,rw*.55),rh*1.15);
+ controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,.75,0);controls.enableDamping=true;controls.dampingFactor=.07;controls.maxPolarAngle=Math.PI/2-.04;controls.minDistance=2;controls.maxDistance=20;controls.update();
+ function loop(){raf=requestAnimationFrame(loop);controls.update();renderer.render(scene,camera)}
+ cancelAnimationFrame(raf);loop();
+} 
 q("#view3d").addEventListener("click",()=>{q("#threeBack").classList.add("show");setTimeout(buildScene,50)});
 q("#threeClose").addEventListener("click",()=>{q("#threeBack").classList.remove("show");cancelAnimationFrame(raf)});
 q("#threeHome").addEventListener("click",()=>buildScene());
