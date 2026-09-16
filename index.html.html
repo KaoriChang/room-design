@@ -1,0 +1,140 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>房間平面圖設計工具</title><style>
+*{box-sizing:border-box}body{margin:0;font-family:"Microsoft JhengHei",sans-serif;background:#f3f1ed;color:#25262a}button,input,select{font:inherit}button{cursor:pointer}
+header{height:58px;background:#fbfaf7;border-bottom:1px solid #d8d3ca;display:flex;align-items:center;padding:0 18px;gap:18px}header b{font-size:20px}.toolbar{display:flex;gap:7px;flex-wrap:wrap}.btn{border:1px solid #cbc6bd;background:#fffdfa;border-radius:8px;padding:8px 11px}.primary{background:#34495e;color:#fff;border-color:#34495e}
+.app{display:grid;grid-template-columns:230px 1fr 250px;min-height:calc(100vh - 58px)}aside{background:#fbfaf7;padding:14px;border-right:1px solid #d8d3ca}.right{border-right:0;border-left:1px solid #d8dde5}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}.tab{padding:7px 9px;border:1px solid #d4d9e1;background:#fff;border-radius:7px;font-size:13px}.tab.on{background:#eee7dc;border-color:#bda98d;color:#594b3b}
+.palette{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tile{height:92px;border:1px solid #d7d1c8;background:#fffdfa;border-radius:9px;padding:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}.tile svg{width:62px;height:52px}.tile span{font-size:12px}
+.center{padding:15px;min-width:0}.settings{display:flex;gap:9px;align-items:end;flex-wrap:wrap;margin-bottom:10px}.field label{font-size:11px;color:#667085;display:block;margin-bottom:3px}.field input,.field select{width:90px;padding:7px;border:1px solid #cdd3dc;border-radius:7px;background:#fff}
+.canvasWrap{background:#fffdfa;border:1px solid #d8d3ca;border-radius:10px;padding:10px;overflow:auto}.canvasWrap svg{display:block;min-width:650px;width:100%;height:auto;background:#fcfbf8}
+h3{font-size:14px;margin:0 0 10px}.prop{margin-bottom:12px}.prop label{font-size:12px;color:#667085;display:block;margin-bottom:4px}.prop input,.prop select{width:100%;padding:8px;border:1px solid #cdd3dc;border-radius:7px}.full{width:100%;margin-bottom:7px}
+.help{font-size:12px;line-height:1.65;color:#667085;background:#f7f8fa;border-radius:8px;padding:10px;margin-top:12px}.muted{color:#8a919d;font-size:12px}.hidden{display:none}
+.customAdd{width:100%;margin-top:12px;border:1px dashed #a9967d;background:#f7f1e8;color:#594b3b;border-radius:9px;padding:10px}
+.dialogBack{position:fixed;inset:0;background:rgba(25,25,25,.28);display:none;align-items:center;justify-content:center;z-index:20}.dialogBack.show{display:flex}
+.dialog{width:min(380px,90vw);background:#fffdfa;border:1px solid #d6cec1;border-radius:14px;padding:18px;box-shadow:0 18px 60px rgba(0,0,0,.18)}
+.dialog h3{font-size:17px}.dialog input{width:100%;padding:9px;border:1px solid #cbc6bd;border-radius:8px;margin:4px 0 10px}
+@media(max-width:900px){.app{grid-template-columns:190px 1fr}.right{grid-column:1/-1;border-left:0;border-top:1px solid #d8dde5}.palette{grid-template-columns:1fr}.tile{height:80px}}
+</style></head><body>
+<header><b>▣ 房間平面圖設計工具</b><div class="toolbar"><button class="btn" id="undo">↶ 復原</button><button class="btn" id="redo">↷ 重做</button><button class="btn" id="clear">清空</button><button class="btn primary" id="saveImg">輸出 PNG</button></div></header>
+<div class="app"><aside><h3>素材庫</h3><div class="tabs" id="tabs"></div><div class="palette" id="palette"></div>
+<button class="customAdd" id="customAdd">＋ 新增自訂家具</button><button class="customAdd" id="importAdd">⇧ 匯入 SVG／PNG 圖示</button><div class="help">點選圖示加入，也可以直接拖曳中央物件。家具皆以俯視平面圖符號呈現。</div></aside>
+<section class="center"><div class="settings"><div class="field"><label>房間寬度 cm</label><input id="roomW" type="number" value="500"></div><div class="field"><label>房間深度 cm</label><input id="roomH" type="number" value="400"></div><div class="field"><label>牆厚 cm</label><input id="wallT" type="number" value="12"></div><div class="field"><label>比例尺</label><select id="scale"><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option></select></div><button class="btn primary" id="apply">套用</button></div>
+<div class="canvasWrap"><svg id="plan" viewBox="0 0 800 620"><defs><pattern id="small" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M14 0H0V14" fill="none" stroke="#edf0f3"/></pattern><pattern id="grid" width="70" height="70" patternUnits="userSpaceOnUse"><rect width="70" height="70" fill="url(#small)"/><path d="M70 0H0V70" fill="none" stroke="#cbd1d9" stroke-width="1.2"/></pattern></defs><rect x="0" y="0" width="800" height="620" fill="url(#grid)"/><g id="dims"></g><rect id="room" x="110" y="90" width="580" height="464" fill="rgba(255,255,255,.78)" stroke="#222831" stroke-width="14"/><g id="objects"></g></svg></div><div class="muted" id="status">先設定房間尺寸，再加入門窗與家具。</div></section>
+<aside class="right"><h3>選取物件</h3><div id="emptyProp" class="muted">請點選中央的家具、門或窗戶。</div><div id="props" class="hidden"><div class="prop"><label>名稱</label><input id="pName"></div><div class="prop"><label>寬度 cm</label><input id="pW" type="number"></div><div class="prop" id="depthRow"><label>深度 cm</label><input id="pH" type="number"></div><div id="paper" class="help"></div><button class="btn primary full" id="update">套用尺寸</button><button class="btn full" id="rotate">↻ 旋轉 90°</button><div id="doorOpts" class="hidden"><div class="prop"><label>鉸鏈</label><select id="hinge"><option value="left">左開</option><option value="right">右開</option></select></div><div class="prop"><label>開啟方向</label><select id="swing"><option value="in">向內開</option><option value="out">向外開</option></select></div></div><button class="btn full" id="del">刪除物件</button></div><div class="help"><b>課堂示範：</b><br>1. 固定門窗位置<br>2. 放置大型家具<br>3. 留出主要走道<br>4. 檢查門扇開啟範圍<br>5. 用比例尺換算圖面尺寸</div></aside></div>
+<div class="dialogBack" id="importDialog"><div class="dialog"><h3>匯入家具圖示</h3>
+<label>選擇圖檔（SVG／PNG）</label><input id="iFile" type="file" accept=".svg,.png,image/svg+xml,image/png">
+<div id="iPreview" style="height:110px;border:1px solid #ddd3c6;border-radius:9px;margin:2px 0 10px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden"><span class="muted">尚未選擇圖檔</span></div>
+<label>家具名稱</label><input id="iName" value="匯入家具">
+<label>實際寬度（cm）</label><input id="iW" type="number" value="100" min="20">
+<label>實際深度（cm）</label><input id="iH" type="number" value="60" min="20">
+<div class="muted" style="margin-bottom:10px">建議使用 SVG 或透明背景 PNG。加入後可拖曳、旋轉及修改實際尺寸。</div>
+<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="iCancel">取消</button><button class="btn primary" id="iCreate">加入平面圖</button></div></div></div>
+<div class="dialogBack" id="customDialog"><div class="dialog"><h3>新增自訂家具</h3>
+<label>家具名稱</label><input id="cName" value="自訂家具">
+<label>寬度（cm）</label><input id="cW" type="number" value="100" min="20">
+<label>深度（cm）</label><input id="cH" type="number" value="60" min="20">
+<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="cCancel">取消</button><button class="btn primary" id="cCreate">新增</button></div></div></div>
+<script>
+const $=q=>document.querySelector(q), NS="http://www.w3.org/2000/svg";let rw=500,rh=400,selected=null,drag=null,cat="臥室",history=[],future=[];
+const DB={"臥室":[["單人床",120,200,"bed"],["雙人床",180,200,"bed"],["衣櫃",120,60,"ward"],["書桌",120,60,"desk"],["書櫃",100,35,"shelf"],["床頭櫃",45,45,"cab"]],
+"客廳":[["單人沙發",90,80,"sofa"],["三人沙發",210,80,"sofa"],["茶几",100,55,"coffee"],["電視櫃",160,40,"tv"],["單椅",55,55,"chair"],["邊桌",50,50,"round"]],
+"餐廚":[["長餐桌",160,80,"dtable"],["圓餐桌",110,110,"rtable"],["餐椅",45,45,"chair"],["冰箱",70,70,"fridge"],["流理台",180,60,"counter"],["瓦斯爐",60,60,"stove"],["水槽",70,60,"sink"]],
+"衛浴":[["馬桶",40,70,"toilet"],["洗手台",60,50,"basin"],["浴缸",160,75,"bath"],["淋浴間",90,90,"shower"],["洗衣機",65,65,"washer"]],
+"門窗":[["單開門",80,10,"door"],["窗戶",120,10,"window"]]};
+function mini(t){return `<svg viewBox="0 0 80 60">${symbol(t,70,48,{dataset:{hinge:"left",swing:"in",wall:"bottom"}})}</svg>`}
+function tabs(){let e=$("#tabs");Object.keys(DB).forEach(k=>{let b=document.createElement("button");b.className="tab"+(k===cat?" on":"");b.textContent=k;b.onclick=()=>{cat=k;tabsRefresh()};e.append(b)});palette()}
+function tabsRefresh(){[...$("#tabs").children].forEach(b=>b.classList.toggle("on",b.textContent===cat));palette()}
+function palette(){let p=$("#palette");p.innerHTML="";DB[cat].forEach(d=>{let b=document.createElement("button");b.className="tile";b.innerHTML=mini(d[3])+`<span>${d[0]}</span>`;b.onclick=()=>{snapshot();add(...d)};p.append(b)})}
+function symbol(t,w,h,g){let B=`<rect width="${w}" height="${h}" rx="2" fill="white" stroke="#3d434c" stroke-width="2"/>`;
+if(t==="bed")return B+`<rect x="${w*.08}" y="${h*.05}" width="${w*.84}" height="${h*.2}" rx="5" fill="#f5f6f7" stroke="#777"/><line x1="${w*.08}" y1="${h*.3}" x2="${w*.92}" y2="${h*.3}" stroke="#888"/><path d="M${w*.1} ${h*.38}Q${w*.5} ${h*.47} ${w*.9} ${h*.38}V${h*.9}H${w*.1}Z" fill="none" stroke="#bbb"/>`;
+if(t==="sofa")return `<rect width="${w}" height="${h}" rx="7" fill="white" stroke="#3d434c" stroke-width="2"/><rect x="${w*.1}" y="${h*.15}" width="${w*.8}" height="${h*.7}" rx="5" fill="#f7f7f7" stroke="#777"/><line x1="${w*.1}" y1="${h*.28}" x2="${w*.9}" y2="${h*.28}" stroke="#999"/><line x1="${w/2}" y1="${h*.28}" x2="${w/2}" y2="${h*.85}" stroke="#aaa"/>`;
+if(t==="desk")return `<rect width="${w}" height="${h*.62}" fill="white" stroke="#444" stroke-width="2"/><rect x="${w*.37}" y="${h*.7}" width="${w*.26}" height="${h*.25}" rx="5" fill="white" stroke="#666"/>`;
+if(t==="ward")return B+`<line x1="${w/2}" y1="0" x2="${w/2}" y2="${h}" stroke="#777"/><path d="M${w*.12} ${h*.5}H${w*.42}M${w*.58} ${h*.5}H${w*.88}" stroke="#777"/>`;
+if(t==="shelf")return B+`<path d="M${w*.2} 0V${h}M${w*.4} 0V${h}M${w*.6} 0V${h}M${w*.8} 0V${h}" stroke="#999"/>`;
+if(t==="coffee"||t==="round")return `<ellipse cx="${w/2}" cy="${h/2}" rx="${w/2-2}" ry="${h/2-2}" fill="white" stroke="#444" stroke-width="2"/>`;
+if(t==="chair")return `<rect x="${w*.12}" y="${h*.12}" width="${w*.76}" height="${h*.76}" rx="5" fill="white" stroke="#444" stroke-width="2"/><line x1="${w*.15}" y1="${h*.25}" x2="${w*.85}" y2="${h*.25}" stroke="#444" stroke-width="3"/>`;
+if(t==="dtable")return B+`<rect x="${w*.12}" y="${h*.08}" width="${w*.18}" height="${h*.18}" rx="3" fill="none" stroke="#888"/><rect x="${w*.7}" y="${h*.08}" width="${w*.18}" height="${h*.18}" rx="3" fill="none" stroke="#888"/><rect x="${w*.12}" y="${h*.74}" width="${w*.18}" height="${h*.18}" rx="3" fill="none" stroke="#888"/><rect x="${w*.7}" y="${h*.74}" width="${w*.18}" height="${h*.18}" rx="3" fill="none" stroke="#888"/>`;
+if(t==="rtable")return `<circle cx="${w/2}" cy="${h/2}" r="${Math.min(w,h)*.37}" fill="white" stroke="#444" stroke-width="2"/><circle cx="${w/2}" cy="${h*.08}" r="${h*.07}" fill="white" stroke="#777"/><circle cx="${w/2}" cy="${h*.92}" r="${h*.07}" fill="white" stroke="#777"/><circle cx="${w*.08}" cy="${h/2}" r="${h*.07}" fill="white" stroke="#777"/><circle cx="${w*.92}" cy="${h/2}" r="${h*.07}" fill="white" stroke="#777"/>`;
+if(t==="tv")return B+`<rect x="${w*.12}" y="${h*.22}" width="${w*.76}" height="${h*.3}" fill="none" stroke="#333" stroke-width="2"/>`;
+if(t==="fridge")return B+`<line x1="0" y1="${h*.3}" x2="${w}" y2="${h*.3}" stroke="#777"/><line x1="${w*.82}" y1="${h*.08}" x2="${w*.82}" y2="${h*.25}" stroke="#777"/>`;
+if(t==="counter")return B+`<rect x="${w*.07}" y="${h*.15}" width="${w*.3}" height="${h*.65}" rx="4" fill="none" stroke="#777"/><circle cx="${w*.68}" cy="${h*.35}" r="${h*.12}" fill="none" stroke="#777"/><circle cx="${w*.84}" cy="${h*.35}" r="${h*.12}" fill="none" stroke="#777"/>`;
+if(t==="stove")return B+`<circle cx="${w*.28}" cy="${h*.28}" r="${w*.11}" fill="none" stroke="#555"/><circle cx="${w*.72}" cy="${h*.28}" r="${w*.11}" fill="none" stroke="#555"/><circle cx="${w*.28}" cy="${h*.72}" r="${w*.11}" fill="none" stroke="#555"/><circle cx="${w*.72}" cy="${h*.72}" r="${w*.11}" fill="none" stroke="#555"/>`;
+if(t==="sink")return B+`<rect x="${w*.12}" y="${h*.15}" width="${w*.76}" height="${h*.65}" rx="5" fill="none" stroke="#666"/><circle cx="${w/2}" cy="${h*.48}" r="2.5"/>`;
+if(t==="toilet")return `<rect x="${w*.28}" width="${w*.44}" height="${h*.25}" fill="white" stroke="#555"/><ellipse cx="${w/2}" cy="${h*.62}" rx="${w*.38}" ry="${h*.32}" fill="white" stroke="#555"/><ellipse cx="${w/2}" cy="${h*.62}" rx="${w*.22}" ry="${h*.2}" fill="none" stroke="#999"/>`;
+if(t==="basin")return B+`<ellipse cx="${w/2}" cy="${h/2}" rx="${w*.3}" ry="${h*.3}" fill="none" stroke="#666"/><circle cx="${w/2}" cy="${h*.18}" r="2"/>`;
+if(t==="bath")return `<rect width="${w}" height="${h}" rx="${h*.28}" fill="white" stroke="#555" stroke-width="2"/><rect x="${w*.07}" y="${h*.12}" width="${w*.86}" height="${h*.76}" rx="${h*.28}" fill="none" stroke="#999"/>`;
+if(t==="shower")return B+`<path d="M0 0L${w} ${h}M${w} 0L0 ${h}" stroke="#aaa"/><circle cx="${w*.78}" cy="${h*.22}" r="4" fill="none" stroke="#555"/>`;
+if(t==="washer")return B+`<circle cx="${w/2}" cy="${h/2}" r="${Math.min(w,h)*.32}" fill="none" stroke="#555" stroke-width="2"/><circle cx="${w/2}" cy="${h/2}" r="${Math.min(w,h)*.22}" fill="none" stroke="#999"/>`;
+if(t==="imported"){let href=(g&&g.dataset&&g.dataset.src)||"";return `<rect width="${w}" height="${h}" fill="white" fill-opacity=".01" stroke="none"/><image href="${href}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none"/>`;}
+if(t==="custom")return B+`<path d="M${w*.12} ${h*.2}H${w*.88}M${w*.12} ${h*.5}H${w*.88}M${w*.12} ${h*.8}H${w*.88}" stroke="#9b8d7b" stroke-dasharray="4 3"/>`;
+if(t==="window")return `<line x1="0" y1="${h*.3}" x2="${w}" y2="${h*.3}" stroke="#333" stroke-width="2"/><line x1="0" y1="${h*.7}" x2="${w}" y2="${h*.7}" stroke="#333" stroke-width="2"/><line x1="${w/2}" y1="0" x2="${w/2}" y2="${h}" stroke="#777"/>`;
+if(t==="door")return `<line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#333" stroke-width="3"/><line x1="0" y1="${h/2}" x2="${w}" y2="${h/2+w*.75}" stroke="#333" stroke-width="2"/><path d="M${w} ${h/2}A${w} ${w} 0 0 1 ${w} ${h/2+w*.75}" fill="none" stroke="#777" stroke-dasharray="4 3"/>`;return B}
+function bounds(){let r=$("#room");return{x:+r.getAttribute("x"),y:+r.getAttribute("y"),w:+r.getAttribute("width"),h:+r.getAttribute("height")}}function factor(){return bounds().w/rw}
+function add(n,w,h,t){let g=document.createElementNS(NS,"g");Object.assign(g.dataset,{name:n,w,h,type:t,x:240,y:190,rot:0,wall:"bottom",hinge:"left",swing:"in"});g.style.cursor="grab";$("#objects").append(g);g.addEventListener("pointerdown",start);g.addEventListener("click",()=>select(g));select(g);draw(g)}
+function addImported(n,w,h,src){
+ let g=document.createElementNS(NS,"g");
+ Object.assign(g.dataset,{name:n,w,h,type:"imported",src,x:240,y:190,rot:0,wall:"bottom",hinge:"left",swing:"in"});
+ g.style.cursor="grab";$("#objects").append(g);g.addEventListener("pointerdown",start);g.addEventListener("click",()=>select(g));select(g);draw(g);
+}
+function size(g){let w=+g.dataset.w*factor(),h=Math.max(+g.dataset.h*factor(),10);if(!["door","window"].includes(g.dataset.type)&&+g.dataset.rot%180)[w,h]=[h,w];return{w,h}}
+function wallPoint(g,px,py){
+ let b=bounds(),len=+g.dataset.w*factor();
+ let d={top:Math.abs(py-b.y),bottom:Math.abs(py-(b.y+b.h)),left:Math.abs(px-b.x),right:Math.abs(px-(b.x+b.w))};
+ let wall=Object.keys(d).sort((a,c)=>d[a]-d[c])[0];
+ // Keep the current wall while dragging near it; only change wall after moving clearly closer to another wall.
+ if(g.dataset.wall && d[g.dataset.wall] < 42) wall=g.dataset.wall;
+ if(wall==="top"||wall==="bottom"){
+   return {wall,x:Math.max(b.x,Math.min(px-len/2,b.x+b.w-len)),y:wall==="top"?b.y:b.y+b.h,angle:0};
+ }
+ return {wall,x:wall==="left"?b.x:b.x+b.w,y:Math.max(b.y,Math.min(py-len/2,b.y+b.h-len)),angle:90};
+}
+function architecturalSymbol(g,len){
+ let t=g.dataset.type,wall=g.dataset.wall,hinge=g.dataset.hinge||"left",swing=g.dataset.swing||"in";
+ if(t==="window") return `<line x1="0" y1="-6" x2="${len}" y2="-6" stroke="#fcfbf8" stroke-width="16"/><line x1="0" y1="-4" x2="${len}" y2="-4" stroke="#333" stroke-width="2"/><line x1="0" y1="4" x2="${len}" y2="4" stroke="#333" stroke-width="2"/><line x1="${len/2}" y1="-6" x2="${len/2}" y2="6" stroke="#777"/>`;
+ let side=(hinge==="left")?1:-1, outward=(swing==="out")?-1:1;
+ // Local coordinates always follow the wall. This avoids rotating a pre-drawn door arc.
+ let hx=hinge==="left"?0:len, closedX=hinge==="left"?len:0;
+ let dy=len*.78*outward, openX=hx+side*len*.62;
+ return `<line x1="0" y1="0" x2="${len}" y2="0" stroke="#fcfbf8" stroke-width="18"/>
+ <circle cx="${hx}" cy="0" r="3" fill="#333"/>
+ <line x1="${hx}" y1="0" x2="${openX}" y2="${dy}" stroke="#333" stroke-width="3"/>
+ <path d="M${closedX} 0 A${len*.78} ${len*.78} 0 0 ${hinge==="left"?(outward>0?1:0):(outward>0?0:1)} ${openX} ${dy}" fill="none" stroke="#777" stroke-width="1.4" stroke-dasharray="5 3"/>`;
+}
+function draw(g){
+ let b=bounds();
+ if(["door","window"].includes(g.dataset.type)){
+   let p=wallPoint(g,+g.dataset.x,+g.dataset.y);g.dataset.wall=p.wall;g.dataset.x=p.x;g.dataset.y=p.y;
+   let len=+g.dataset.w*factor();g.innerHTML=architecturalSymbol(g,len);
+   g.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
+   return;
+ }
+ let z=size(g),x=Math.max(b.x+7,Math.min(+g.dataset.x,b.x+b.w-z.w-7)),y=Math.max(b.y+7,Math.min(+g.dataset.y,b.y+b.h-z.h-7));
+ g.dataset.x=x;g.dataset.y=y;g.innerHTML=symbol(g.dataset.type,z.w,z.h,g);g.setAttribute("transform",`translate(${x} ${y})`);
+ if(g===selected){let q=document.createElementNS(NS,"rect");q.setAttribute("x",-4);q.setAttribute("y",-4);q.setAttribute("width",z.w+8);q.setAttribute("height",z.h+8);q.setAttribute("fill","none");q.setAttribute("stroke","#b57a3a");q.setAttribute("stroke-width",3);q.setAttribute("stroke-dasharray","5 3");g.append(q)}
+}
+function select(g){if(selected&&selected!==g)draw(selected);selected=g;draw(g);$("#emptyProp").classList.add("hidden");$("#props").classList.remove("hidden");$("#pName").value=g.dataset.name;$("#pW").value=g.dataset.w;$("#pH").value=g.dataset.h;let arch=["door","window"].includes(g.dataset.type);$("#depthRow").classList.toggle("hidden",arch);$("#rotate").classList.toggle("hidden",arch);$("#doorOpts").classList.toggle("hidden",g.dataset.type!=="door");$("#hinge").value=g.dataset.hinge;$("#swing").value=g.dataset.swing;paper()}
+function paper(){if(!selected)return;let s=+$("#scale").value;$("#paper").innerHTML=`實際尺寸：<b>${selected.dataset.w} × ${selected.dataset.h} cm</b><br>1:${s} 圖面：約 <b>${(+selected.dataset.w/s).toFixed(1)} × ${(+selected.dataset.h/s).toFixed(1)} cm</b>`}
+function pt(e){let p=$("#plan").createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform($("#plan").getScreenCTM().inverse())}
+function start(e){select(e.currentTarget);snapshot();let p=pt(e),arch=["door","window"].includes(e.currentTarget.dataset.type);drag={g:e.currentTarget,arch,dx:arch?0:p.x-(+e.currentTarget.dataset.x),dy:arch?0:p.y-(+e.currentTarget.dataset.y)};e.currentTarget.setPointerCapture(e.pointerId);e.preventDefault()}
+$("#plan").addEventListener("pointermove",e=>{if(!drag)return;let p=pt(e);drag.g.dataset.x=drag.arch?p.x:p.x-drag.dx;drag.g.dataset.y=drag.arch?p.y:p.y-drag.dy;draw(drag.g)});
+$("#plan").addEventListener("pointerup",()=>drag=null);
+function serialize(){return {rw,rh,roomW:$("#roomW").value,roomH:$("#roomH").value,wall:$("#wallT").value,scale:$("#scale").value,items:[...$("#objects").children].map(g=>({...g.dataset}))}}function restore(s){rw=s.rw;rh=s.rh;$("#roomW").value=s.roomW;$("#roomH").value=s.roomH;$("#wallT").value=s.wall;$("#scale").value=s.scale;$("#objects").innerHTML="";applyRoom(false);s.items.forEach(d=>{let g=document.createElementNS(NS,"g");Object.assign(g.dataset,d);g.style.cursor="grab";$("#objects").append(g);g.addEventListener("pointerdown",start);g.addEventListener("click",()=>select(g));draw(g)});selected=null;$("#props").classList.add("hidden");$("#emptyProp").classList.remove("hidden")}function snapshot(){history.push(JSON.stringify(serialize()));if(history.length>30)history.shift();future=[]}
+function applyRoom(snap=true){if(snap)snapshot();rw=Math.max(200,Math.min(1000,+$("#roomW").value||500));rh=Math.max(200,Math.min(1000,+$("#roomH").value||400));let f=Math.min(580/rw,464/rh),w=rw*f,h=rh*f,r=$("#room");r.setAttribute("width",w);r.setAttribute("height",h);r.setAttribute("x",400-w/2);r.setAttribute("y",90);r.setAttribute("stroke-width",Math.max(6,+$("#wallT").value*f));$("#dims").innerHTML=`<line x1="${400-w/2}" y1="65" x2="${400+w/2}" y2="65" stroke="#69717c"/><text x="400" y="58" text-anchor="middle" font-size="13">${rw} cm</text><line x1="${400-w/2-28}" y1="90" x2="${400-w/2-28}" y2="${90+h}" stroke="#69717c"/><text x="${400-w/2-38}" y="${90+h/2}" transform="rotate(-90 ${400-w/2-38} ${90+h/2})" text-anchor="middle" font-size="13">${rh} cm</text>`;[...$("#objects").children].forEach(draw);paper()}
+$("#apply").onclick=()=>applyRoom();$("#update").onclick=()=>{if(!selected)return;snapshot();selected.dataset.name=$("#pName").value;selected.dataset.w=Math.max(20,+$("#pW").value||20);selected.dataset.h=Math.max(10,+$("#pH").value||10);draw(selected);paper()};$("#rotate").onclick=()=>{if(selected){snapshot();selected.dataset.rot=(+selected.dataset.rot+90)%180;draw(selected)}};$("#hinge").onchange=()=>{if(selected){snapshot();selected.dataset.hinge=$("#hinge").value;draw(selected)}};$("#swing").onchange=()=>{if(selected){snapshot();selected.dataset.swing=$("#swing").value;draw(selected)}};$("#del").onclick=()=>{if(selected){snapshot();selected.remove();selected=null;$("#props").classList.add("hidden");$("#emptyProp").classList.remove("hidden")}};$("#clear").onclick=()=>{snapshot();$("#objects").innerHTML="";selected=null};$("#undo").onclick=()=>{if(history.length){future.push(JSON.stringify(serialize()));restore(JSON.parse(history.pop()))}};$("#redo").onclick=()=>{if(future.length){history.push(JSON.stringify(serialize()));restore(JSON.parse(future.pop()))}};$("#scale").onchange=paper;
+let importData="";
+$("#importAdd").onclick=()=>{importData="";$("#iFile").value="";$("#iPreview").innerHTML='<span class="muted">尚未選擇圖檔</span>';$("#importDialog").classList.add("show")};
+$("#iCancel").onclick=()=>$("#importDialog").classList.remove("show");
+$("#importDialog").addEventListener("click",e=>{if(e.target===$("#importDialog"))$("#importDialog").classList.remove("show")});
+$("#iFile").addEventListener("change",e=>{
+ let f=e.target.files&&e.target.files[0];if(!f)return;
+ if(!["image/svg+xml","image/png"].includes(f.type) && !/\.(svg|png)$/i.test(f.name)){alert("目前只支援 SVG 或 PNG 圖檔");e.target.value="";return}
+ if(f.size>2*1024*1024){alert("圖檔請控制在 2MB 以內，避免 HTML 工具執行變慢。");e.target.value="";return}
+ let r=new FileReader();r.onload=()=>{importData=r.result;$("#iPreview").innerHTML=`<img src="${importData}" alt="圖示預覽" style="max-width:95%;max-height:100px;object-fit:contain">`;if($("#iName").value==="匯入家具")$("#iName").value=f.name.replace(/\.[^.]+$/,"")};r.readAsDataURL(f)
+});
+$("#iCreate").onclick=()=>{if(!importData){alert("請先選擇 SVG 或 PNG 圖檔");return}let n=$("#iName").value.trim()||"匯入家具",w=Math.max(20,+$("#iW").value||100),h=Math.max(20,+$("#iH").value||60);snapshot();addImported(n,w,h,importData);$("#importDialog").classList.remove("show")};
+$("#customAdd").onclick=()=>$("#customDialog").classList.add("show");
+$("#cCancel").onclick=()=>$("#customDialog").classList.remove("show");
+$("#cCreate").onclick=()=>{let n=$("#cName").value.trim()||"自訂家具",w=Math.max(20,+$("#cW").value||100),h=Math.max(20,+$("#cH").value||60);snapshot();add(n,w,h,"custom");$("#customDialog").classList.remove("show")};
+$("#customDialog").addEventListener("click",e=>{if(e.target===$("#customDialog"))$("#customDialog").classList.remove("show")});
+$("#saveImg").onclick=()=>{let svg=$("#plan").cloneNode(true),xml=new XMLSerializer().serializeToString(svg),blob=new Blob([xml],{type:"image/svg+xml"}),url=URL.createObjectURL(blob),im=new Image();im.onload=()=>{let c=document.createElement("canvas");c.width=1600;c.height=1240;let x=c.getContext("2d");x.fillStyle="white";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);let a=document.createElement("a");a.download="房間平面圖.png";a.href=c.toDataURL("image/png");a.click()};im.src=url};tabs();applyRoom(false);
+</script></body></html>
