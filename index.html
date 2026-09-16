@@ -489,7 +489,7 @@ function addWallSegment(horizontal,start,end,base,height,rw,rh,t,mat=MAT.wall){
 }
 function wallOpenings(wall,rw,rh,B,f){
  let L=(wall==="top"||wall==="bottom")?rw:rh, out=[];
- [...q("#objects").children].forEach(el=>{
+ for(const el of [...q("#objects").children]){
    if(!["door","window"].includes(el.dataset.type)||(el.dataset.wall||"bottom")!==wall)return;
    let pos=(wall==="top"||wall==="bottom")?((+el.dataset.x-B.x)/f/100):((+el.dataset.y-B.y)/f/100);
    let len=(+el.dataset.w||80)/100;
@@ -567,7 +567,7 @@ async function buildScene(){
  renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;host.appendChild(renderer.domElement);
  scene.add(new THREE.HemisphereLight(0xffffff,0xb7aa99,2.2));let sun=new THREE.DirectionalLight(0xfff4df,3.2);sun.position.set(4,7,5);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
  let B=bounds(),f=factor(),{rw,rh,H,t}=addRoom(B,f);
- for(const el of [...q("#objects").children]){
+ [...q("#objects").children].forEach(el=>{
    let type=el.dataset.type, wall=el.dataset.wall||"bottom",cmw=+el.dataset.w||80,cmd=+el.dataset.h||60;
    let sx=(+el.dataset.x-B.x)/f/100,sz=(+el.dataset.y-B.y)/f/100;
    if(type==="window"){addWindow3(el,wall,rw,rh,B,f,t);continue;}
