@@ -58,7 +58,7 @@ h3{font-size:14px;margin:0 0 10px}.prop{margin-bottom:12px}.prop label{font-size
 <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="cCancel">取消</button><button class="btn primary" id="cCreate">新增</button></div></div></div>
 <div class="threeBack" id="threeBack"><div class="threePanel">
 <div class="threeHead"><strong>3D 房間預覽</strong><button class="btn" id="threeHome">⌂ 重設視角</button><button class="btn" id="threeShot">匯出圖片</button><button class="btn" id="threeClose">✕ 關閉</button></div>
-<div id="threeCanvas" style="flex:1;min-height:0;position:relative"></div><div class="threeNote">滑鼠拖曳：旋轉視角　｜　滾輪：縮放　｜　右鍵拖曳：平移　｜　內建家具使用簡化寫實 3D 造型；床、書桌、電視、沙發、書櫃、衣櫃、茶几與植物使用 Sweet Home 3D / BlendSwap CC0 模型。</div>
+<div id="threeCanvas" style="flex:1;min-height:0;position:relative"></div><div class="threeNote">滑鼠拖曳：旋轉視角　｜　滾輪：縮放　｜　右鍵拖曳：平移　｜　3D 家具會限制在 2D 家具實際尺寸範圍內；床、書桌、電視、沙發、書櫃、衣櫃、茶几與植物使用 Sweet Home 3D / BlendSwap CC0 模型。</div>
 </div></div><script>
 const $=q=>document.querySelector(q), NS="http://www.w3.org/2000/svg";let rw=500,rh=400,selected=null,drag=null,cat="門窗",history=[],future=[];
 const DB={
@@ -393,10 +393,16 @@ async function loadSH3D(type,W,D,targetH){
    let obj=original.clone(true);
    let box=new THREE.Box3().setFromObject(obj), size=new THREE.Vector3();box.getSize(size);
    if(size.x<.001||size.z<.001)return null;
-   obj.position.sub(box.getCenter(new THREE.Vector3()));
-   // Match the exact 2D footprint; keep a sensible model height.
-   let sy=targetH/Math.max(size.y,.001);
-   obj.scale.set(W/size.x,sy,D/size.z);
+   // Normalize model coordinates: center only on the floor plane.
+   // Do not center Y: some OBJ files have unusual origins and that can launch a model above the walls.
+   let center=box.getCenter(new THREE.Vector3());
+   obj.position.x-=center.x; obj.position.z-=center.z; obj.position.y-=box.min.y;
+   const clearance=.92;
+   let planScale=Math.min((W*clearance)/size.x,(D*clearance)/size.z);
+   // Also cap height so no ordinary furniture can unexpectedly rise above the room.
+   let heightScale=(targetH*1.15)/Math.max(size.y,.001);
+   let scale=Math.min(planScale,heightScale);
+   obj.scale.setScalar(scale);
    let b2=new THREE.Box3().setFromObject(obj);
    obj.position.y-=b2.min.y;
    return obj;
@@ -458,10 +464,10 @@ function furniture(type,w,d,h){
  if(type==="computer"){
    let top=meshBox(w,.07,d,MAT.wood);put(g,top,0,.74,0);
    [-1,1].forEach(a=>[-1,1].forEach(b=>put(g,meshBox(.055,.72,.055,MAT.metal),a*(w/2-.07),.36,b*(d/2-.07))));
-   let screen=meshBox(Math.min(.62,w*.48),.38,.035,MAT.dark);put(g,screen,-w*.10,1.02,-d*.28);
+   let screen=meshBox(Math.min(.58,w*.42),.34,.03,MAT.dark);put(g,screen,-w*.10,1.00,-d*.22);
    put(g,meshBox(.035,.20,.035,MAT.metal),-w*.10,.82,-d*.28);
    put(g,meshBox(.24,.04,.15,MAT.dark),-w*.10,.72,-d*.28);
-   put(g,meshBox(.22,.48,.42,MAT.dark),w*.30,.25,-d*.12);
+   put(g,meshBox(Math.min(.20,w*.16),.44,Math.min(.34,d*.48),MAT.dark),w*.30,.23,-d*.10);
    return g;
  }
  if(type==="plant"){
@@ -581,15 +587,22 @@ function buildScene(){
    // Draw a usable furniture immediately so the 3D view never waits on model downloads.
    let fallback=furniture(type,W,D,hh);
    if(el.dataset.flip==="1")fallback.scale.x=-1;
-   fallback.position.set(-rw/2+sx+W/2,0,-rh/2+sz+D/2);fallback.rotation.y=-rot;scene.add(fallback);
+   let cx=THREE.MathUtils.clamp(-rw/2+sx+W/2,-rw/2+W/2,rw/2-W/2);
+   let cz=THREE.MathUtils.clamp(-rh/2+sz+D/2,-rh/2+D/2,rh/2-D/2);
+   fallback.position.set(cx,0,cz);fallback.rotation.y=-rot;scene.add(fallback);
 
    if(SH3D_MODELS[type]){
      loadSH3D(type,W,D,hh).then(obj=>{
        if(!obj||!scene)return;
        let px=fallback.position.x,pz=fallback.position.z,ry=fallback.rotation.y;
-       scene.remove(fallback);
        if(el.dataset.flip==="1")obj.scale.x*=-1;
-       obj.position.x+=px;obj.position.z+=pz;obj.rotation.y=ry;scene.add(obj);
+       obj.position.x+=px;obj.position.z+=pz;obj.rotation.y=ry;
+       let check=new THREE.Box3().setFromObject(obj), cs=new THREE.Vector3();check.getSize(cs);
+       // If an imported model has abnormal bounds, keep the safe procedural furniture instead.
+       if(!Number.isFinite(cs.x)||!Number.isFinite(cs.y)||!Number.isFinite(cs.z)||cs.y>H*1.15||cs.x>W*1.12||cs.z>D*1.12){
+         console.warn("Rejected abnormal model bounds:",type,cs);return;
+       }
+       scene.remove(fallback);scene.add(obj);
      }).catch(err=>console.warn("model replacement failed",type,err));
    }
  }
